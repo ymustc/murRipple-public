@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>__TITLE__ · 知漪 murRipple</title>
+<style>
+  html,body { margin:0; height:100%; background:#06070d; overflow:hidden; }
+  canvas { display:block; width:100%; height:100%; }
+  #mr-ui { position:fixed; inset:0; pointer-events:none; transition:opacity .4s;
+           font:12px ui-monospace,SFMono-Regular,Menlo,monospace; color:#cfe; }
+  #mr-ui > * { pointer-events:auto; }
+  #mr-ui.mr-hidden { opacity:0; }
+  #mr-ui.mr-hidden > * { pointer-events:none; }
+  /* 走带条：居中的圆角卡片。横贯全屏的细条会把画面下沿整个切掉一道，
+     而这幅画是圆的、两侧本来就空着——卡片只占中间，画面呼吸得开。 */
+  #mr-hud { position:absolute; left:50%; bottom:26px; transform:translateX(-50%);
+            width:min(880px, 78vw); padding:13px 18px 15px;
+            background:#0a0e18cc; border:1px solid #ffffff14; border-radius:13px;
+            backdrop-filter:blur(8px); }
+  #mr-hud-row { display:flex; align-items:center; gap:14px; margin-bottom:11px; }
+  #mr-section { flex:1; min-width:0; line-height:1.15; }
+  #mr-section b { font:500 15px/1.2 "Songti SC","STSong",serif;
+                  letter-spacing:.26em; color:#e2e9f7; }
+  #mr-section em { display:block; font-style:normal; font-size:9px;
+                   letter-spacing:.22em; color:#6f7d93; }
+  #mr-time { flex:none; opacity:.8; font-variant-numeric:tabular-nums; }
+  #mr-play { width:30px; height:30px; flex:none; cursor:pointer; color:#cfe;
+             background:#141a28aa; border:1px solid #2a3a52; border-radius:50%; }
+  #mr-mix { flex:none; padding:5px 11px; cursor:pointer; color:#cfe;
+            font-size:11px; letter-spacing:.1em;
+            background:#141a28aa; border:1px solid #2a3a52; border-radius:4px; }
+  #mr-mix:hover { background:#1c2637cc; }
+  #mr-mix:disabled { opacity:.5; cursor:default; }
+  #mr-download { flex:none; padding:5px 11px; cursor:pointer; color:#cfe;
+                 font-size:11px; letter-spacing:.1em; text-decoration:none;
+                 background:#141a28aa; border:1px solid #2a3a52; border-radius:4px; }
+  #mr-download:hover { background:#1c2637cc; }
+  #mr-vol { flex:none; width:74px; accent-color:#cfe; }
+  #mr-hide { flex:none; width:24px; height:24px; cursor:pointer; color:#cfe;
+             background:none; border:1px solid #2a3a52; border-radius:3px;
+             line-height:1; opacity:.65; }
+  #mr-hide:hover { opacity:1; }
+  #mr-bar { position:relative; height:14px; cursor:pointer; touch-action:none; }
+  #mr-bar::before { content:""; position:absolute; left:0; right:0; top:6px;
+                    height:2px; background:#ffffff1f; border-radius:2px; }
+  #mr-ticks i { position:absolute; top:3px; width:1px; height:8px;
+                background:#ffffff33; }
+  /* 填充走渐变：一条纯色的进度条太像加载中，渐变才有"织"的意思 */
+  #mr-fill { position:absolute; left:0; top:6px; height:2px; width:0;
+             border-radius:2px;
+             background:linear-gradient(90deg,#5b8bff,#c08bff 55%,#ffb3d9); }
+  #mr-knob { position:absolute; top:3px; left:0; width:8px; height:8px;
+             margin-left:-4px; border-radius:50%; background:#fff;
+             box-shadow:0 0 8px #ffffff88; }
+
+  /* 左上标题卡：标题页点进去之后曲名就没了，看视频或截图的人无从知道
+     这是哪首歌。 */
+  #mr-titlecard { position:absolute; left:22px; top:20px; padding:12px 18px;
+                  background:#0a0e1899; border:1px solid #ffffff12;
+                  border-radius:11px; backdrop-filter:blur(6px); }
+  #mr-titlecard b { display:block; font:400 19px/1.25 -apple-system,
+                    "PingFang SC",sans-serif; letter-spacing:.24em; color:#e6edf9; }
+  #mr-titlecard em { display:block; margin-top:4px; font-style:normal;
+                     font-size:10px; letter-spacing:.2em; color:#6f7d93; }
+  #mr-voices { position:absolute; right:18px; top:50%; transform:translateY(-50%);
+               display:flex; flex-direction:column; gap:2px; padding:12px 14px;
+               background:#0a0e1899; border:1px solid #ffffff12; border-radius:10px;
+               backdrop-filter:blur(6px); }
+  .mr-voice { position:relative; display:flex; align-items:center; gap:9px;
+              width:190px; padding:5px 4px 5px 11px; cursor:pointer;
+              text-align:left;
+              background:none; border:0; color:inherit; font:inherit;
+              border-radius:5px; transition:background .15s, opacity .15s; }
+  .mr-voice:hover { background:#ffffff0e; }
+  .mr-voice.muted { opacity:.34; }
+  /* 连动组的竖脊。共用同一条分轨的相邻几行被左边这道括号收在一起——
+     不点、不悬停就能看出它们是一体的（原先只有点下去之后"一起变暗"，
+     面板静止时看着还是四个独立开关）。
+     data-group-pos 由 voices.js 从 lane.stem 推出来，合成曲九行一个都
+     没有，于是这几条规则一条也匹配不上，画面上干干净净。
+     上下用 -3px 越过 #mr-voices 的 2px 行距，让同组几段接成一条。 */
+  .mr-voice[data-group-pos]::before { content:""; position:absolute; left:3px;
+              width:2px; background:#7f93b8; opacity:.85; }
+  .mr-voice[data-group-pos="first"]::before { top:5px; bottom:-3px;
+              border-radius:1px 1px 0 0; }
+  .mr-voice[data-group-pos="mid"]::before   { top:-3px; bottom:-3px; }
+  .mr-voice[data-group-pos="last"]::before  { top:-3px; bottom:5px;
+              border-radius:0 0 1px 1px; }
+  .mr-voice[data-group-pos="lone"]::before  { top:5px; bottom:5px;
+              border-radius:1px; }
+  .mr-voice-note { margin:7px 0 0 3px; max-width:190px;
+              font:400 8.5px/1.45 -apple-system,"PingFang SC",sans-serif;
+              letter-spacing:.06em; color:#6f7d93; }
+  .mr-dot { width:7px; height:7px; flex:none; border-radius:50%; }
+  .mr-voice.muted .mr-dot { background:#5a6678 !important; }
+  .mr-name { flex:1; min-width:0; line-height:1.15; }
+  .mr-name b { display:block; font:500 12px/1.2 -apple-system,"PingFang SC",sans-serif;
+               letter-spacing:.18em; color:#dfe8f5; }
+  .mr-name em { display:block; font-style:normal; font-size:8.5px;
+                letter-spacing:.1em; color:#7f8 da3; color:#7f8da3; }
+  .mr-meter { position:relative; width:56px; height:2px; flex:none;
+              background:#ffffff1c; border-radius:1px; overflow:hidden; }
+  .mr-meter > i { position:absolute; left:0; top:0; height:100%; width:2%;
+                  background:currentColor; border-radius:1px; }
+  .mr-voice .mr-meter { color:#aebbd0; }
+  #mr-title { position:absolute; inset:0; display:flex; flex-direction:column;
+              align-items:center; justify-content:center; gap:0;
+              background:radial-gradient(ellipse at 50% 46%, #0a1020 0%, #04060c 68%);
+              font:400 14px -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  #mr-t-stage { position:relative; width:min(64vh,64vw); aspect-ratio:1; }
+  #mr-t-ring { position:absolute; inset:8%; border-radius:50%;
+               border:1px solid #ffffff1f; }
+  #mr-t-orb { position:absolute; left:50%; top:50%; width:34%; aspect-ratio:1;
+              transform:translate(-50%,-50%); border-radius:50%;
+              background:radial-gradient(circle,#cfd8ffcc 0%,#8f7fe066 34%,transparent 70%);
+              animation:mr-breathe 5.5s ease-in-out infinite; }
+  @keyframes mr-breathe { 0%,100%{transform:translate(-50%,-50%) scale(.92);opacity:.75}
+                          50%{transform:translate(-50%,-50%) scale(1.06);opacity:1} }
+  #mr-t-names i { position:absolute; transform:translate(-50%,-50%);
+                  font:400 11px/1 "Songti SC","STSong",serif; letter-spacing:.24em;
+                  color:#8ea0bd; white-space:nowrap; }
+  #mr-t-body { position:absolute; inset:0; display:flex; flex-direction:column;
+               align-items:center; justify-content:center; gap:6px; text-align:center; }
+  #mr-title h1 { margin:0; font-size:clamp(30px,6.4vh,58px); font-weight:300;
+                 letter-spacing:.3em; text-indent:.3em;
+                 background:linear-gradient(96deg,#a9c6ff,#e0b6ff 52%,#ffc9e6);
+                 -webkit-background-clip:text; background-clip:text; color:transparent; }
+  #mr-t-sub { margin:2px 0 0; font-size:11px; letter-spacing:.42em; color:#7f8da3; }
+  #mr-t-meta { margin:0; font-size:11.5px; letter-spacing:.2em; color:#6f7d93;
+               font-variant-numeric:tabular-nums; }
+  #mr-start { margin-top:14px; width:56px; height:56px; border-radius:50%;
+              cursor:pointer; color:#dfe8f5; font-size:17px; line-height:1;
+              background:#0d1striped; background:#0d1424aa; border:1px solid #ffffff2e; }
+  #mr-start:hover { background:#141d33cc; }
+  #mr-start:disabled { opacity:.45; cursor:default; }
+  #mr-t-hint { margin:22px 0 0; font-size:11px; letter-spacing:.14em; color:#5f6c81; }
+  #mr-t-msg { margin:8px 0 0; min-height:1.3em; font-size:12px; color:#9fb0c8; }
+  #mr-t-credit { position:absolute; bottom:22px; margin:0; font-size:10.5px;
+                 letter-spacing:.3em; color:#3f4a5c; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="mr-ui"></div>
+<script>window.__MR_TITLE__ = __TITLE_JSON__;</script>
+<script>window.__MR_TIMELINE__ = __TIMELINE__;</script>
+<script>window.__MR_AUDIO__ = __AUDIO__;</script>
+<script>__BUNDLE__</script>
+</body>
+</html>

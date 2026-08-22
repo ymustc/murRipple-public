@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8"><title>murRipple harness</title>
+<style>html,body{margin:0;background:#06070d}canvas{display:block;width:800px;height:450px}</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<script src="../dist/bundle.js"></script>
+<script>
+  const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
+  const ramp = (n) => b64(Array.from({length:n}, (_, i) => (i * 7) % 256));
+
+  // 单独挂出来：实时/离线一致性测试要用同一份文档另建一个 app
+  window.__HARNESS_DOC__ = {
+    meta: { title:"harness", duration:10, bpm:120, codec:"aac-64k", schemaVersion:1 },
+    sections: [{t:0,name:"",energy:0.2},{t:5,name:"",energy:0.8}],
+    beats: [0,0.5,1,1.5,2],
+    downbeats: [0,2,4],
+    ring: { envelope: ramp(600), presence: b64(Array.from({length:600},(_,i)=>i>200?255:0)) },
+    lanes: ["kick","snare","hat","bass","mid","air"].map((id,i)=>({
+      id, label:id, hue: i*57, stem: i<3?"drums":(i===3?"bass":"other"),
+      gain: 1,
+      // 每轨一串音符，让下落层与粒子层都被确定性测试真正执行到。
+      //
+      // 步长 0.6 而不是 0.7：音符要一直排到 9.5 秒，否则末帧 t=9.9 减去
+      // 1.7 提前量之后一个音符都没有，这两层在那一帧上是空跑。
+      //
+      // snare 与 kick 的时间**完全相同**（i 不参与错位）：其余轨道错开
+      // 0.11 秒，而 STEP=1/120≈0.0083，永远落不到同一步里——恰好绕开了
+      // hitIndicesIn 左开右闭最容易出错的场景。
+      notes: Array.from({length: 15}, (_, k) => ({
+        t: 0.6 + k * 0.6 + (id === "snare" ? 0 : i * 0.11),
+        v: 0.3 + ((k * 7 + i * 3) % 10) / 14,
+        pitch: id === "bass" ? 24 + ((k * 5) % 36) : null,
+      })),
+      envelope: ramp(600),
+    })),
+    lyrics: [
+      { t0: 1, t1: 4, text: "锈色电台　夜里还醒", words: null },
+      { t0: 6, t1: 9, text: "谁先眨眼就输", words: null },
+    ],
+  };
+
+  window.__HARNESS__ = murRippleApp.createApp({
+    doc: document,
+    canvas: document.getElementById("cv"),
+    mode: "offline",
+    timelineDoc: window.__HARNESS_DOC__,
+  });
+  window.__HARNESS__.resize();
+
+  // 合成音频：不给的话波形层整层跳过，等于没被测到
+  const SR = 8000, DUR = 10;
+  const ch = new Float32Array(SR * DUR);
+  for (let i = 0; i < ch.length; i++) {
+    ch[i] = 0.6 * Math.sin(2 * Math.PI * 220 * i / SR)
+          + 0.3 * Math.sin(2 * Math.PI * 55 * i / SR);
+  }
+  window.__HARNESS_AUDIO__ = { channel: ch, sr: SR };
+  window.__HARNESS__.setAudio(window.__HARNESS_AUDIO__);
+</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+  × No solution found when resolving `--with` dependencies:
+  ╰─▶ Because there is no version of yt-dlp==99.99.99 and you require
+      yt-dlp==99.99.99, we can conclude that your requirements are
+      unsatisfiable.

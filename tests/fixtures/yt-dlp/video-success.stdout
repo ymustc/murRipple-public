@@ -1,0 +1,12 @@
+[generic] Extracting URL: http://127.0.0.1:8931/%E7%9F%A5%E6%BC%AA%E6%B5%8B%E8%AF%95%E7%89%87.mp4
+[generic] 知漪测试片: Downloading webpage
+[info] 知漪测试片: Downloading 1 format(s): mp4
+[download] Destination: /private/tmp/claude-501/-Users-miaoyu-Documents-claudeProjects-murRipple--claude-worktrees-nostalgic-gould-ad0822/15312c2f-db01-4d4c-a0a8-522ac12e15b5/scratchpad/capture/outE/知漪测试片.mp4
+[download]   2.4% of   41.75KiB at  Unknown B/s ETA Unknown
+[download]   7.2% of   41.75KiB at  Unknown B/s ETA Unknown
+[download]  16.8% of   41.75KiB at  Unknown B/s ETA Unknown
+[download]  35.9% of   41.75KiB at  Unknown B/s ETA Unknown
+[download]  74.2% of   41.75KiB at  Unknown B/s ETA Unknown
+[download] 100.0% of   41.75KiB at  Unknown B/s ETA Unknown
+[download] 100% of   41.75KiB in 00:00:00 at 24.45MiB/s
+[info] Writing '%(filepath)s' to: /private/tmp/claude-501/-Users-miaoyu-Documents-claudeProjects-murRipple--claude-worktrees-nostalgic-gould-ad0822/15312c2f-db01-4d4c-a0a8-522ac12e15b5/scratchpad/capture/outE.path

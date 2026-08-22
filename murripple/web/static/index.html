@@ -1,0 +1,865 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>知漪 murRipple</title>
+<!--
+  零外链，与产物同一条规矩：没有 CDN、没有外部字体、没有第三方请求。
+  样式和脚本全部内联，字体只用系统自带的那几种；极光带、星点、五环标识
+  全部是 CSS 渐变 + 内联 SVG，一个远程地址都没有（内联 SVG 在 HTML 里
+  不需要 xmlns —— 写上去反而会把 w3.org 那个命名空间地址带进这个文件，
+  下面那条守卫会当场红，这一条 2026-08-14 撞过一次）。
+  守卫在 tests/test_web_page.py::test_the_page_pulls_nothing_from_the_network。
+
+  视觉基准：docs/design/2026-08-14-w1-shell/G-final-aurora-glass.html
+-->
+<style>
+  /* ── 色板：色相**逐个等于**产品真正画出来的那一个，不是「取自」而已 ──────
+     2026-08-15 订正：上一版的注释写的是对的数字（撼岳 28、心籁 300……），
+     而 `hsl()` 里的值是**另一套**——做界面定稿时按观感挑的，从头到尾没对过
+     `murripple/lanes.py`。差得最多的是心籁 300 → 312、碎玉 195 → 186。
+     **注释在声称一个它自己没做到的事**，这比数值错更坏：下一个人会信它。
+     现在两边逐个相等，并由 `tests/test_web_palette.py` 钉着——那条守卫读的是
+     `lanes.py` 与 `voices.js` 的真值，不是这里再抄一遍。 */
+  :root {
+    --c-hy: hsl(28 96% 64%);   /* 撼岳 28  */
+    --c-sd: hsl(60 96% 64%);   /* 霜铎 60  */
+    --c-ll: hsl(165 86% 56%);  /* 泠泠 165 */
+    --c-sy: hsl(195 92% 60%);  /* 碎玉 195 */
+    --c-ym: hsl(225 90% 70%);  /* 渊鸣 225 */
+    --c-pm: hsl(270 86% 72%);  /* 缥缈 270 */
+    --c-xl: hsl(300 90% 68%);  /* 心籁 300 */
+    --deep: #0c2033;
+    --fg: #f2fbff;
+    --dim: #b8d7e6;
+    --dim2: #7ea3b8;
+    --line: #ffffff2e;
+    --sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", sans-serif;
+    --serif: "Songti SC", "STSong", ui-serif, Georgia, serif;
+    --mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: var(--sans); font-size: 15px; line-height: 1.72;
+    color: var(--fg); -webkit-font-smoothing: antialiased;
+    min-height: 100vh; background: #16324a; background-attachment: fixed;
+  }
+
+  /* ── 极光带 + 星点 ────────────────────────────────────────────────
+     定稿里那 150 个星点是一段 JS 撒出来的。这个页面只许有一段内联脚本
+     （tests/test_web_page.py:318 钉着这一条，多一段就有一段不被测），
+     所以星点改成几层 radial-gradient 平铺——同样零外链，同样不动脚本。 */
+  .aur { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+  .aur i { position: absolute; left: -30%; width: 160%; height: 38%; filter: blur(56px); opacity: .6; }
+  .stars {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      radial-gradient(1.5px 1.5px at 23px 41px, #ffffffd6, transparent),
+      radial-gradient(1px 1px at 137px 92px, #ffffff9e, transparent),
+      radial-gradient(1px 1px at 71px 173px, #ffffff8a, transparent),
+      radial-gradient(2.2px 2.2px at 191px 29px, #ffffffb5, transparent),
+      radial-gradient(1px 1px at 11px 121px, #ffffff75, transparent),
+      radial-gradient(1.2px 1.2px at 157px 211px, #ffffffa8, transparent),
+      radial-gradient(1px 1px at 59px 67px, #ffffff8f, transparent),
+      radial-gradient(1.6px 1.6px at 233px 149px, #ffffffc4, transparent),
+      radial-gradient(1px 1px at 101px 251px, #ffffff80, transparent);
+    background-size:
+      229px 241px, 229px 241px, 229px 241px,
+      317px 349px, 317px 349px, 317px 349px,
+      163px 277px, 163px 277px, 163px 277px;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 720px; margin: 0 auto; padding: 60px 28px 90px; }
+  .card {
+    background: #0b1c2ca6; border: 1px solid var(--line); border-radius: 26px;
+    padding: 40px 40px 44px; backdrop-filter: blur(22px); box-shadow: 0 26px 72px #06121e73;
+  }
+
+  /* ── 标识：同心圆五环 = 五个声部色相 ──────────────────────────────── */
+  .brand { display: flex; align-items: center; gap: 18px; margin: 0 0 8px; font-weight: 400; }
+  .wm-cn {
+    font-family: var(--serif); font-size: 40px; font-weight: 400;
+    letter-spacing: .18em; line-height: 1; color: #fff;
+  }
+  .wm-en { font-family: var(--mono); font-size: 11.5px; letter-spacing: .4em; color: var(--dim2); margin-top: 8px; }
+  .lede { color: var(--dim); font-size: 14.5px; margin: 16px 0 38px; }
+
+  section + section { margin-top: 34px; padding-top: 30px; border-top: 1px solid var(--line); }
+  h2 {
+    font-size: 12px; font-weight: 700; letter-spacing: .26em; color: var(--dim);
+    margin: 34px 0 13px; display: flex; align-items: center; gap: 12px;
+  }
+  section > h2:first-child { margin-top: 0; }
+  h2 b { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+  h2::after { content: ""; flex: 1; height: 1px; background: linear-gradient(90deg, var(--line), transparent); }
+  label { display: block; color: var(--dim); font-size: 13.5px; margin-bottom: 9px; }
+  label strong { color: var(--c-sy); font-weight: 600; }
+  .hint { color: var(--dim2); font-size: 13px; margin: 9px 0 0; }
+
+  /* 原生 `<input type=file>` 的按钮文案（Chrome 上是 `Choose File / No file
+     chosen`）**CSS 改不掉**——`::file-selector-button` 能改样式、改不了那几个字。
+     一个中文页面上摆两个英文控件，于淼当场指出来了。
+     所以把原生控件收进无障碍隐藏区，用一个 `<label for=...>` 顶上去：
+     **点 label 打开文件选择器是浏览器的原生行为，一行 JS 都不用接。**
+     （前一版注释说「换成假控件就得自己写接线」——那对 `<div>` 成立，对
+     `<label for=...>` 不成立。文件名倒是得自己写，见 `boot()` 的 `showPicked`。） */
+  .sr {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  }
+  .filepick {
+    display: flex; align-items: center; gap: 14px; cursor: pointer; margin-bottom: 0;
+    background: #0c2033a8; border: 1px solid var(--line); border-radius: 15px;
+    padding: 11px 14px;
+  }
+  .filepick .pickbtn {
+    flex: none; font-size: 14px; font-weight: 600; color: var(--deep);
+    border-radius: 10px; padding: 9px 21px;
+    background: linear-gradient(96deg, var(--c-ll), var(--c-sy));
+  }
+  .filepick .fname {
+    color: var(--dim2); font-size: 13.5px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* 键盘用户看不见那个 input，但 Tab 仍然走得到它——焦点环得画在顶上去的
+     label 上，否则「焦点现在在哪」对键盘用户就整个消失了。`.sr` 用 clip 而不是
+     `display:none`，正是为了保住这条 Tab 路径。 */
+  .sr:focus + .filepick { outline: none; border-color: var(--c-sy); }
+  .sr:focus-visible + .filepick { box-shadow: 0 0 0 2px var(--c-sy); }
+  /* 传 lyrics.txt 是**第二条路**（第一条是贴进文本框，还能直接拖进去），所以它
+     比上面那个选素材的框轻一档——两个一模一样的「选择文件」摆在一起，用户
+     分不出哪个是哪个。 */
+  .filepick.thin { margin-top: 11px; padding: 7px 11px; background: #0c203366; }
+  .filepick.thin .pickbtn {
+    background: none; border: 1px solid var(--line); color: var(--dim);
+    font-weight: 400; font-size: 12.5px; padding: 5px 15px;
+  }
+  .filepick.thin .fname { font-size: 12.5px; }
+  /* 「先在本机提取」那一行。**一直在，用不上的时候禁用并说明为什么。**
+     初版是选了音频才出现——顾虑是对的（视频与链接那两条路的歌词本来就是
+     ingest 自己 OCR 的，摆一个勾了什么也不会发生的钩子就是页面在撒谎），
+     但代价是**上面那句提示先提到了它、而它还不在**，刚打开界面的人会当成 bug
+     （于淼 2026-08-15 指出）。
+     现在两头都占：藏起来 → 压暗 + `disabled` + 一句「为什么用不上」。
+     没有新配色：压暗用 opacity，说明那句沿用撼岳。 */
+  .opt {
+    display: flex; gap: 10px; align-items: flex-start; cursor: pointer;
+    margin: 13px 0 0; color: var(--dim2); font-size: 13px; line-height: 1.7;
+  }
+  .opt input { flex: none; margin: 5px 0 0; accent-color: var(--c-ll); }
+  .opt b { color: var(--dim); font-weight: 600; }
+  /* 用不上的时候不藏起来，压暗 + 禁用 + 当场说明为什么。
+     **压暗由 CSS 自己看 `disabled`，JS 不碰 class**——初版用
+     `classList.toggle`，而 `tests/test_web_e2e.py` 的假 DOM 没有 `classList`，
+     当场 TypeError。那是替身在报告我用了一个它没有的 API；与其给替身补一个
+     `classList`（多一件要跟真实现同步的东西），不如让这件事根本不需要 JS。 */
+  .opt:has(input:disabled) { opacity: .45; cursor: not-allowed; }
+  .opt i { font-style: normal; color: var(--c-hy); }
+  /* 链接框。**不套 `.sr` + `<label for>`** —— 那一套是为了盖住原生 file 控件
+     那几个 CSS 改不掉的英文字（`Choose File / No file chosen`），文本框没有那
+     个问题，套上去等于把输入框藏进无障碍隐藏区、谁也打不了字。
+     沿用的是同一档玻璃卡、同一个聚焦色，没有临场发明的颜色。 */
+  input[type="text"] {
+    width: 100%; background: #0c2033a8; color: var(--fg); font-family: var(--sans);
+    border: 1px solid var(--line); border-radius: 15px; padding: 12px 16px;
+    font-size: 14px; backdrop-filter: blur(10px);
+  }
+  input[type="text"]::placeholder { color: #6b8ea3; }
+  input[type="text"]:focus { outline: none; border-color: var(--c-sy); }
+  .orsep {
+    color: var(--dim2); font-size: 12px; letter-spacing: .2em;
+    margin: 15px 0 11px; display: flex; align-items: center; gap: 12px;
+  }
+  .orsep::before, .orsep::after { content: ""; flex: 1; height: 1px; background: var(--line); }
+  textarea {
+    width: 100%; min-height: 170px; background: #0c2033a8; color: var(--fg);
+    border: 1px solid var(--line); border-radius: 16px; padding: 17px 20px; resize: vertical;
+    font-family: var(--sans); font-size: 14.5px; line-height: 1.9; backdrop-filter: blur(10px);
+  }
+  textarea::placeholder { color: #6b8ea3; }
+  textarea:focus { outline: none; border-color: var(--c-sy); }
+  #ocrLyrics { min-height: 120px; }
+  .notice {
+    color: var(--c-hy); font-size: 13.5px; background: hsl(28 60% 40% / .18);
+    border: 1px solid hsl(28 80% 60% / .34); border-radius: 12px; padding: 12px 16px; margin: 0 0 13px;
+  }
+
+  .go { margin-top: 34px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  button {
+    font-family: var(--sans); font-size: 15px; font-weight: 700; letter-spacing: .22em;
+    color: var(--deep); border: 0; border-radius: 999px; padding: 14px 46px; cursor: pointer;
+    background: linear-gradient(96deg, var(--c-sd), var(--c-ll) 42%, var(--c-sy));
+    box-shadow: 0 8px 28px hsl(170 88% 50% / .3);
+  }
+  button[disabled] { background: #ffffff17; color: #6b8ea3; box-shadow: none; cursor: not-allowed; }
+  .blocked { color: var(--c-hy); font-size: 13.5px; margin: 0; min-height: 1.2em; }
+
+  /* ── 进度 ─────────────────────────────────────────────────────── */
+  .runhead { display: flex; align-items: center; gap: 18px; }
+  .outer { font-family: var(--serif); font-size: 27px; letter-spacing: .1em; line-height: 1.2; margin: 0; }
+  .inner { color: var(--dim); font-size: 13px; font-family: var(--mono); margin: 4px 0 0; }
+  /* 六条声部色的段：亮几条由 `renderBars()` 算，不是写死的装饰。 */
+  .bars { display: flex; gap: 5px; margin-top: 18px; }
+  .bars i { height: 5px; border-radius: 3px; flex: 1; background: #ffffff1c; }
+  .bars i.on.bar-1 { background: var(--c-hy); }
+  .bars i.on.bar-2 { background: var(--c-sd); }
+  .bars i.on.bar-3 { background: var(--c-ll); }
+  .bars i.on.bar-4 { background: var(--c-sy); }
+  .bars i.on.bar-5 { background: var(--c-ym); }
+  .bars i.on.bar-6 { background: var(--c-xl); }
+  /* 听写那几分钟的说明块。刻意**不长得像进度条**：一块静止的说明文字，读完
+     就知道"停着是正常的"。会动的只有那个已用时的秒数，而它是量出来的。 */
+  .waiting {
+    margin-top: 16px; border: 1px solid var(--line); border-radius: 14px;
+    background: #07161f9e; padding: 13px 17px;
+  }
+  .waiting p { margin: 0; color: var(--dim2); font-size: 13px; line-height: 1.85; }
+  .waiting-clock {
+    margin-top: 7px !important; font-family: var(--mono); font-size: 12.5px;
+    color: var(--dim) !important; letter-spacing: .04em;
+  }
+  .log {
+    margin-top: 18px; background: #07161f9e; border: 1px solid var(--line); border-radius: 14px;
+    padding: 14px 18px; font-family: var(--mono); font-size: 12.5px; line-height: 2.05;
+    color: var(--dim); max-height: 220px; overflow: auto;
+  }
+  /* `pre-wrap` 挂在**每一行**上，不挂在容器上：`renderMainLog()` 用 `\n` 把
+     那些 `<div>` 接起来，容器上一挂，每两行之间就多出一个空行（定稿里是不空
+     行的）。挂在行上，行首那几个空格照样留着——CLI 的缩进是「子消息」的记号
+     （spec 第五节），吞掉它等于把一层结构抹平。 */
+  .log .ln { white-space: pre-wrap; word-break: break-word; }
+  .ln-degraded .ln-text { color: var(--c-hy); }
+  button.why {
+    font-family: var(--mono); font-size: 11.5px; font-weight: 400; letter-spacing: 0;
+    margin: 0 0 0 8px; padding: 0; border: 0; border-radius: 0;
+    color: var(--c-hy); opacity: .85; background: none; box-shadow: none; cursor: pointer;
+  }
+  details { margin-top: 13px; }
+  summary { color: var(--dim2); font-size: 12.5px; cursor: pointer; font-family: var(--mono); }
+  pre {
+    white-space: pre-wrap; word-break: break-word; font-family: var(--mono); font-size: 12px;
+    color: var(--dim2); background: #07161f9e; border: 1px solid var(--line); border-radius: 12px;
+    padding: 13px 16px; margin: 11px 0 0;
+  }
+  details pre { max-height: 22rem; overflow: auto; }
+  .bad { color: var(--c-xl); }
+  /* 错误原文照登、一个字节不删，但**不许无限长高**：取回落到第 3 级时那 20 行
+     里有三条带绝对路径的完整命令，真跑实测这一块高 1385 px，把下面的东西全推
+     出屏幕。`overflow:auto` 保证每一个字都还够得到——**限高不等于藏起来**，
+     这一条跟「降级必须大声说」不冲突。跟折叠区里那个 `pre` 同一个尺寸。 */
+  pre.error {
+    border-color: hsl(300 80% 62% / .45); color: var(--dim);
+    max-height: 22rem; overflow: auto;
+  }
+  .done a {
+    display: inline-block; margin-top: 6px; font-size: 15px; font-weight: 600; color: var(--deep);
+    text-decoration: none; border-radius: 999px; padding: 12px 34px;
+    background: linear-gradient(96deg, var(--c-sd), var(--c-hy));
+  }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<div class="aur">
+  <i style="top:-8%;background:linear-gradient(96deg,hsl(165 86% 50%/.85),hsl(195 92% 55%/.5),transparent 78%);transform:rotate(-11deg)"></i>
+  <i style="top:26%;background:linear-gradient(96deg,transparent,hsl(300 86% 62%/.6),hsl(270 84% 62%/.44) 70%,transparent);transform:rotate(-7deg)"></i>
+  <i style="top:62%;background:linear-gradient(96deg,hsl(60 92% 60%/.32),transparent 46%,hsl(195 90% 55%/.5));transform:rotate(-13deg)"></i>
+</div>
+<div class="stars"></div>
+
+<main class="wrap"><div class="card">
+  <h1 class="brand">
+    <svg width="56" height="56" viewBox="0 0 56 56" fill="none" aria-hidden="true">
+      <circle cx="28" cy="28" r="4.4" fill="hsl(60 96% 64%)"/>
+      <circle cx="28" cy="28" r="10"   stroke="hsl(28 96% 64%)"  stroke-width="2.4"/>
+      <circle cx="28" cy="28" r="16.2" stroke="hsl(300 90% 68%)" stroke-width="2.2"/>
+      <circle cx="28" cy="28" r="21.8" stroke="hsl(165 86% 56%)" stroke-width="1.9" stroke-opacity=".92"/>
+      <circle cx="28" cy="28" r="26.8" stroke="hsl(195 92% 60%)" stroke-width="1.6" stroke-opacity=".62"/>
+    </svg>
+    <span><span class="wm-cn">知漪</span><span class="wm-en" style="display:block">murripple</span></span>
+  </h1>
+  <p class="lede">选一个文件或粘一条视频链接、把歌词贴进来、点开始。</p>
+
+  <section id="setup">
+    <h2><b style="background:hsl(195 92% 60%)"></b>一、素材</h2>
+    <label for="media">音频（mp3 / wav / m4a / flac）或视频（mp4 / mov / mkv / webm / avi）</label>
+    <input type="file" id="media" class="sr" accept=".mp3,.wav,.m4a,.flac,.mp4,.mov,.mkv,.webm,.avi">
+    <label class="filepick" for="media"><span class="pickbtn">选择文件</span><span class="fname" id="mediaName">还没选</span></label>
+    <p class="hint" id="mediaHint">视频会先抽音轨、试着认硬字幕，中间停一次让你过一眼。</p>
+
+    <p class="orsep">或者</p>
+    <label for="url">粘一条视频链接，自动抽取音频或视频</label>
+    <!--
+      占位符里**不许拿一个带协议头的地址当例子**：零外链那条守卫是按「这个文件里
+      一个远程地址都没有」守的，出现即失守，它分不出占位符和 `src`。
+      2026-08-14 撞过两次：先是占位符，然后是**这段解释自己**——原稿在这里把那个
+      协议头原样写了出来，守卫照样红。做防护的动作伤到它要保护的东西，第四例。
+      所以这里用中文说明该粘什么，正文与注释都不出现协议头。
+    -->
+    <input type="text" id="url" placeholder="把视频页面的地址整条粘进来">
+    <!--
+      版权提醒**两处都要有**：这一句是常驻的，日志里那一句由取回那一层真的打出来
+      （`fetch.COPYRIGHT_NOTICE` → `[取回]` → 主日志）。只留日志那一句不行——主日志
+      只留最近 20 行，而版权提醒是第一行，一次长 ingest 之后它必然被挤出可视区。
+      两处不许各写各的：守卫 `tests/test_web_fetch_wiring.py::test_页面上的版权提醒与取回层是同一句话`
+      钉住它们共有的特征串，且那个串此刻仍在 `murripple/fetch.py` 里。
+    -->
+    <p class="notice" id="urlNotice" style="margin-top:11px">
+      ⚠ 你对自己处理和分发的素材负责。从链接取回的录音多半受版权保护；
+      成品页面内嵌完整音频，公开分享前请确认你拥有相应权利。
+      全部处理都在你自己的机器上完成，不上传任何内容。
+    </p>
+
+    <h2><b style="background:hsl(300 90% 68%)"></b>二、歌词</h2>
+    <label for="lyrics">一行一句。<strong>上传音频需要搭配歌词</strong>（一句都没有的话，勾下面那个先在本机提取）；<strong>上传视频可先留空</strong>，由模型尝试从硬字幕自动提取。</label>
+    <!--
+      占位符里写着「也可以把 lyrics.txt 拖进这里」——那是一句承诺，所以
+      `boot()` 里给这个文本框接了 drop：拖进来的文件真的会被读进来。
+      承诺与接线的守卫在 tests/test_web_e2e.py::test_a_lyrics_file_dropped_on_the_textarea…
+    -->
+    <textarea id="lyrics" placeholder="一行一句地贴进来　　也可以把 lyrics.txt 拖进这里"></textarea>
+    <input type="file" id="lyricsFile" class="sr" accept=".txt,text/plain">
+    <label class="filepick thin" for="lyricsFile"><span class="pickbtn">选 .txt 文件</span><span class="fname" id="lyricsName">拖进上面的框里也行</span></label>
+
+    <!--
+      听写那条路的入口。**每一句都是接着线的**：
+      · 「先让它在本机听一遍」→ `stageFor()` 真的会去起 `transcribe` 那一档，
+        而那一档整条路上一次外部请求都没有（模型跑在本机）。
+      · 「断句和改字是你的事」→ 听写**写不到 lyrics.txt**（写的是
+        lyrics.draft.txt），页面拿到草稿之后一定停在下面那个校对框上，用户不点
+        「改好了，继续」就没有任何东西往下走。
+      · 这一行只在选了音频时才出现（`refreshGate()`），因为只有那一条路会用到它。
+      承诺与接线的守卫在 tests/test_transcribe.py 与 tests/test_web_page.py。
+    -->
+    <label class="opt" id="transcribeRow">
+      <!-- `disabled` 与那句「为什么用不上」**写死在标签上**，不等 `boot()` 来补。
+           HTML 先渲染、脚本后跑：只靠 JS 的话，页面刚打开的一瞬间它是可勾的、
+           而且没有任何说明——用户看到的是闪一下。这与四个 `<section>` 带着
+           `hidden` 是同一个理由。守卫：test_the_hook_starts_disabled_in_the_html_itself -->
+      <input type="checkbox" id="transcribe" disabled>
+      <span>没有歌词？先在本机自动提取（大约几分钟），<b>断句和改字需审核确认</b>。<i id="transcribeWhy">（先选一个音频文件）</i></span>
+    </label>
+
+    <div class="go">
+      <button id="start" disabled>开　始</button>
+      <p class="blocked" id="blocked"></p>
+    </div>
+  </section>
+
+  <section id="progress" hidden>
+    <h2><b style="background:hsl(60 96% 64%)"></b>正在做</h2>
+    <div class="runhead">
+      <svg width="52" height="52" viewBox="0 0 52 52" fill="none" aria-hidden="true">
+        <circle cx="26" cy="26" r="3.9" fill="hsl(60 96% 64%)"/>
+        <circle cx="26" cy="26" r="9.8"  stroke="hsl(28 96% 64%)"  stroke-width="2.6"/>
+        <circle cx="26" cy="26" r="15.8" stroke="hsl(300 90% 68%)" stroke-width="2.4"/>
+        <circle cx="26" cy="26" r="21.8" stroke="hsl(195 92% 60%)" stroke-width="2.4"
+                stroke-opacity=".35" stroke-dasharray="102 36"/>
+      </svg>
+      <div><p class="outer" id="outer">准备中…</p><p class="inner" id="inner"></p></div>
+    </div>
+    <!-- 初值是六条都不亮：还没开跑，就一条都不该亮。 -->
+    <div class="bars" id="bars"><i class="bar-1"></i><i class="bar-2"></i><i class="bar-3"></i><i class="bar-4"></i><i class="bar-5"></i><i class="bar-6"></i></div>
+    <!--
+      听写那几分钟专用的一块话。**里面没有进度条、没有百分比、没有「还需多久」**
+      ——WhisperX 不吐逐段回调，这三样都只能靠编，而编出来的进度就是撒谎。
+      文案由 `transcribeWaiting()` 按真实状态给，已用时由 `elapsedText()` 念；
+      两个都不预测任何事。
+    -->
+    <div class="waiting" id="waiting" hidden>
+      <p id="waitingWhy"></p>
+      <p class="waiting-clock" id="waitingElapsed"></p>
+    </div>
+    <div class="log" id="mainLog"></div>
+    <p class="hint" id="omitted" hidden></p>
+    <details id="detailBox">
+      <!--
+        这块牌子的名字（「详细输出」）是上面那句路标指过来的，两处要对得上；
+        括号里也不许再说「通常不用看」——自从主日志超出滚动区的行也收进这里，
+        这一区就不只是第三方组件的原话了（收口评审 I1 的 ⚠️ 附带条款）。
+      -->
+      <summary>详细输出</summary>
+      <pre id="detailLog"></pre>
+    </details>
+  </section>
+
+  <section id="review" hidden>
+    <h2><b style="background:hsl(225 90% 70%)"></b>三、核一遍歌词</h2>
+    <!--
+      前半句两条路共用，后半句由 `reviewNote(stage)` 按这一趟是 OCR 还是听写填
+      ——两条路认错的方式不一样，说同一句话等于有一条在骗人。**不是拼在 HTML 里
+      写死**：写死的话，页面会对着听写出来的稿子说"硬字幕会整行整行地漏"。
+    -->
+    <p class="notice">要核的是行数与内容，不是只改错字。<span id="reviewWhy"></span></p>
+    <textarea id="ocrLyrics"></textarea>
+    <div class="go"><button id="continue">改好了，继续</button></div>
+  </section>
+
+  <section id="finished" class="done" hidden>
+    <h2><b style="background:hsl(165 86% 56%)"></b>做完了</h2>
+    <p class="hint" style="margin-bottom:14px">成品是一个独立自包含的单文件页面，直接在浏览器里打开或下载。</p>
+    <a id="resultLink" href="#" target="_blank" rel="noopener">打开成品 ↗</a>
+  </section>
+
+  <section id="failed" hidden>
+    <h2 class="bad"><b style="background:hsl(300 90% 68%)"></b>停在这里了</h2>
+    <p class="hint">下面是它自己说的话，一个字没改：</p>
+    <pre class="error" id="errorText"></pre>
+  </section>
+</div></main>
+
+<script>
+// ==========================================================================
+// 纯函数区：不碰 DOM，可以在 node 里单独跑
+// （tests/test_web_page.py 就是这么验「没歌词不让提交」和「查看原因 ▾」的——
+//  用 grep 断这两条的话，一个把字写死在页面上、跟状态毫无关系的实现照样绿）
+// ==========================================================================
+
+var AUDIO_SUFFIXES = [".mp3", ".wav", ".m4a", ".flac"];
+var VIDEO_SUFFIXES = [".mp4", ".mov", ".mkv", ".webm", ".avi"];
+
+/** 文件名 → 走哪条路。认不出来返回 null（服务端还会再判一次，那次才算数）。 */
+function routeOf(filename) {
+  if (!filename) { return null; }
+  var lower = String(filename).toLowerCase();
+  for (var i = 0; i < AUDIO_SUFFIXES.length; i++) {
+    if (lower.endsWith(AUDIO_SUFFIXES[i])) { return "run"; }
+  }
+  for (var j = 0; j < VIDEO_SUFFIXES.length; j++) {
+    if (lower.endsWith(VIDEO_SUFFIXES[j])) { return "ingest"; }
+  }
+  return null;
+}
+
+/**
+ * 这一单能不能提交。能就返回 null，不能就返回一句给用户看的话。
+ *
+ * 裁定 D：W1 音频路线歌词必填。**视频那条路不能拦**——歌词正是 ingest 要
+ * OCR 出来的，拦了等于把整条路堵死。链接那条路同理：取回来的视频就是要拿去
+ * OCR 的，这会儿要歌词等于把它堵死。
+ *
+ * **文件和链接只能给一个。** 两个都给了不猜哪个作数——照 `ingest.scan` 的
+ * 老规矩：拿不准就说清楚，让人自己删掉一个。而且要说清是**哪一种**冲突，
+ * 跟「什么都没给」说同一句话的话，用户不知道自己犯的是哪个错。
+ */
+function blockedReason(route, lyrics, url, hasFile, wantTranscribe) {
+  var link = String(url || "").trim();
+  if (hasFile && link !== "") {
+    return "文件和链接只能给一个。清空链接框，或者把已选的文件换掉。";
+  }
+  if (link !== "") { return null; }
+  if (route !== "run" && route !== "ingest") {
+    return "先选一个音频或视频文件，或者粘一条视频链接。";
+  }
+  // 勾了「先听一遍」就不再要歌词——歌词正是那一档要听出来的。**只对音频这条路
+  // 放行**：视频与链接本来就不经过这个分支（上面 `route !== "run"` 已经返回）。
+  // 这一条不是把裁定 D 那道门拆了，是给它开了一个**用户自己按下去的**出口：
+  // 没勾的时候，音频照旧一个字都不许少。
+  if (route === "run" && !wantTranscribe && String(lyrics || "").trim() === "") {
+    return "请上传歌词（贴文本或传 lyrics.txt）。要拿歌词去对时间，否则无法对齐音轨。";
+  }
+  return null;
+}
+
+/**
+ * 这一单先起哪一档。
+ *
+ * **听写不是一条路线，是音频那条路线上的一个前置动作**：跑完落进校对框，人改完
+ * 点「改好了，继续」，回到 `run`。所以 `route` 仍然是 `run`，只是第一趟先走
+ * `transcribe`。
+ *
+ * 勾选只对音频作数：视频那条路的歌词是 `ingest` 自己 OCR 出来的，把它改道去
+ * 听写等于把已经更准的那条路换成更差的（硬字幕给的是画面直接写出来的字）。
+ */
+function stageFor(route, wantTranscribe) {
+  if (route === "run" && wantTranscribe) { return "transcribe"; }
+  return route;
+}
+
+/**
+ * 校对框上那句提醒的后半句。前半句（"要核的是行数与内容，不是只改错字"）两条路
+ * 共用，写在 HTML 里；后半句必须分开说——**两条路认错的方式完全不一样**：
+ * OCR 是整行整行地漏，听写是字会错、而且根本不断句。说同一句话，就有一条在骗人。
+ */
+function reviewNote(stage) {
+  if (stage === "transcribe") {
+    return "下面这些字是机器在本机听出来的，没有人核过，字会错。断句是按停顿"
+         + "切的，不是歌词的行——行数几乎肯定不对，得你自己断。";
+  }
+  return "硬字幕识别会整行整行地漏，漏掉的那几行不会有任何提示。";
+}
+
+function escapeHtml(text) {
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+/**
+ * 主日志。降级那几行旁边挂一个「查看原因 ▾」，点开即展开详细区。
+ *
+ * **详细区一行都没有的时候不给入口**：点开是空的入口比没有入口更糟——用户点了、
+ * 看见空的，于是以为原因不存在。`detailCount` 就是为这一条存在的。
+ */
+function renderMainLog(entries, detailCount) {
+  var out = [];
+  for (var i = 0; i < entries.length; i++) {
+    var entry = entries[i];
+    var row = '<div class="ln' + (entry.degraded ? " ln-degraded" : "") + '">';
+    row += '<span class="ln-text">' + escapeHtml(entry.text) + "</span>";
+    if (entry.degraded && detailCount > 0) {
+      row += ' <button type="button" class="why" data-open-detail="1">查看原因 ▾</button>';
+    }
+    out.push(row + "</div>");
+  }
+  return out.join("\n");
+}
+
+/** 一层进度怎么写。没有这一层就返回空串。 */
+function stepText(step) {
+  if (!step) { return ""; }
+  return "[" + step.step + "/" + step.total + "] " + (step.name || "");
+}
+
+//: 编号之外的阶段名。键要跟 `murripple/web/progress.py::PHASE_FETCH` 对得上，
+//  守卫是 `tests/test_web_fetch_wiring.py`——两处各写各的，改一处另一处会安静
+//  地退回「准备中…」，而那正是这一块要修掉的那句假话。
+var PHASE_NAMES = { "fetch": "取回素材" };
+
+/**
+ * 大标题：这会儿到底在干什么。
+ *
+ * 编号那一套（`[n/m]`）开跑之前，页面原先一律说「准备中…」。**贴链接那条路上
+ * 这句话是错的**：取回要先下工具链（第一次还有一个 36.7 MB 的运行时）、再下
+ * 素材，几分钟；这几分钟里主日志一直在滚，而大标题说它在「准备」。不知情的人
+ * 只有两种读法——要么以为卡死了，要么以为还没开始，两种都不对。
+ *
+ * 三种情况分得干干净净：
+ * - 有 `[n/m]`：照直念那一层的原文。
+ * - 没有 `[n/m]`、但有一个不打编号的阶段在跑：念那个阶段的名字。
+ * - 两样都没有：这才是真的「准备中…」——子进程刚起来，一行都还没打出来。
+ *
+ * **外层的分母一次都没变过。** 取回不是「第 3 步」，它是 `[1/2]` 之前的一段；
+ * `state.outer` 在那几分钟里照旧是 `null`，六条进度条照旧一条都不亮——那是实
+ * 话，编号那一套确实还没走出第一步。
+ */
+function phaseTitle(state) {
+  var numbered = stepText(state && state.outer);
+  if (numbered) { return numbered; }
+  var named = state && state.phase && PHASE_NAMES[state.phase];
+  return named || "准备中…";
+}
+
+/**
+ * 「这一步没有中间进度可报」那块话。返回 `null` 表示这会儿不该出现。
+ *
+ * 听写要跑几十秒到几分钟，而 WhisperX **不吐逐段回调**——页面上没有任何东西
+ * 会动。原先这里什么都不说，于是那几分钟里屏幕是死的。
+ *
+ * **不许拿一个匀速爬的条把它填上**：那个条跟子进程里真正发生的事没有半点关
+ * 系，画出来就是页面在撒谎。「预计还需 X 分钟」同样不许——本仓一个听写的实测
+ * 时长都没有（`docs/site/demo/` 那份逐行抄件跑的是 `run`，里头压根没有听写这
+ * 一步），编一个出来正是这条判据要挡的。
+ *
+ * 所以这块话只说**真的**事：它在做什么、为什么一动不动、以及在哪儿能看见它的
+ * 动静。剩下「我知道它没死」那一半交给已用时——那是量出来的，不是估出来的。
+ */
+function transcribeWaiting(state) {
+  if (!state || state.stage !== "transcribe" || state.status !== "running") {
+    return null;
+  }
+  var outer = state.outer;
+  if (!outer || outer.step !== 1) { return null; }
+  // `[1/2] 听写    跳过（…）`：跳过那条分支根本不等人（盘上已经有歌词或草稿
+  // 了，下一行紧接着就来）。对着它说「要等一会儿」是另一句假话。
+  if (String(outer.name || "").indexOf("跳过") !== -1) { return null; }
+  return "这一步没有中间进度可报：模型要把整首歌听完，才一次性给出结果。"
+       + "所以上面的日志会停在这里不动，这是正常的，不是卡住了。"
+       + "模型跑在你自己的机器上，不联网；它自己的动静收在下面的「详细输出」里。";
+}
+
+/**
+ * 已用时，念成 `1 分 23 秒`。
+ *
+ * **只念量到的，不估剩余。** 这个数是「从页面看见听写那一行到现在」的墙上时
+ * 间，误差不超过一个轮询间隔（700 毫秒）；它不预测任何事，所以它不会错。
+ */
+function elapsedText(ms) {
+  var total = Math.max(0, Math.floor(ms / 1000));
+  var min = Math.floor(total / 60);
+  var sec = total % 60;
+  return min > 0 ? (min + " 分 " + sec + " 秒") : (sec + " 秒");
+}
+
+/**
+ * 六条进度条里该亮几条。**这是进度的一部分，不是装饰**——判据是「第 3 段亮」
+ * 与「永远亮 5 段」分得开（`tests/test_web_page.py` 逐档核）。
+ *
+ * 两级进度压成一个比例：走完的外层步数，加上当前这一步走了多少。当前这一步
+ * **没有内层细分时按走了一半算**——不假装没开始（那样 `打包` 全程一动不动），
+ * 也不假装已走完（那样六条会在还在跑的时候就全亮）。跑完了才全亮。
+ */
+function barsFilled(outer, inner, done, count) {
+  if (done) { return count; }
+  if (!outer || !outer.total) { return 0; }
+  var within = inner && inner.total ? inner.step / inner.total : 0.5;
+  var ratio = (outer.step - 1 + within) / outer.total;
+  return Math.max(0, Math.min(count, Math.ceil(ratio * count)));
+}
+
+/** 六条进度条的 HTML。第 n 条亮起来是什么颜色由 CSS 的 `.bar-n` 给。 */
+function renderBars(outer, inner, done) {
+  var count = 6;
+  var lit = barsFilled(outer, inner, done, count);
+  var out = [];
+  for (var i = 1; i <= count; i++) {
+    out.push('<i class="bar-' + i + (i <= lit ? " on" : "") + '"></i>');
+  }
+  return out.join("");
+}
+
+// ==========================================================================
+// DOM 区
+// ==========================================================================
+
+function boot() {
+  var el = {};
+  var ids = ["media", "mediaName", "mediaHint", "url", "lyrics", "lyricsFile", "lyricsName",
+             "transcribeRow", "transcribe", "transcribeWhy", "start", "blocked",
+             "progress", "outer", "inner", "bars", "waiting", "waitingWhy",
+             "waitingElapsed", "mainLog", "omitted", "detailBox",
+             "detailLog", "review", "reviewWhy", "ocrLyrics", "continue", "finished",
+             "resultLink", "failed", "errorText"];
+  for (var i = 0; i < ids.length; i++) { el[ids[i]] = document.getElementById(ids[i]); }
+
+  var job = null;          // { id, route }
+  var timer = null;
+  var opened = false;      // 产物只自动开一次
+  //: 听写那一步是什么时候进的（`Date.now()`）。`null` = 这会儿不在那一步里。
+  //  **只用来念已用时，不参与任何预测**——见 `elapsedText()`。
+  var waitingSince = null;
+
+  function currentRoute() {
+    return el.media.files.length ? routeOf(el.media.files[0].name) : null;
+  }
+
+  function refreshGate() {
+    var route = currentRoute();
+    // 「先在本机提取」只在音频那条路上有意义。**露而不接是撒谎，藏起来又会让
+    // 上面那句提到它的提示看着像 bug**——所以一直露着，用不上时禁用并说明。
+    var audioRoute = route === "run";
+    el.transcribe.disabled = !audioRoute;
+    el.transcribeWhy.textContent = audioRoute ? ""
+      : route === null ? "（先选一个音频文件）"
+      : "（视频与链接这两条路会自己认硬字幕，用不上这个）";
+    if (!audioRoute) { el.transcribe.checked = false; }
+    var reason = blockedReason(route, el.lyrics.value,
+                              el.url.value, el.media.files.length > 0,
+                              el.transcribe.checked);
+    el.start.disabled = reason !== null;
+    el.blocked.textContent = reason === null ? "" : reason;
+  }
+
+  /** 一份 lyrics.txt → 文本框。传上来的和拖进来的走同一条路。 */
+  function loadLyricsFile(file) {
+    var reader = new FileReader();
+    reader.onload = function () { el.lyrics.value = reader.result; refreshGate(); };
+    reader.readAsText(file, "utf-8");
+  }
+
+  /** 原生控件被藏起来了，「选了哪个文件」这句话得我们自己说。
+      **一定要 `textContent`**——文件名是用户给的数据，`innerHTML` 会把
+      `<img onerror=…>` 这种名字当标签执行。同 `pushLog` 的规矩。 */
+  function showPicked(slot, input, empty) {
+    slot.textContent = input.files.length ? input.files[0].name : empty;
+  }
+
+  el.media.addEventListener("change", function () {
+    showPicked(el.mediaName, el.media, "还没选");
+    refreshGate();
+  });
+  el.url.addEventListener("input", refreshGate);
+  el.lyrics.addEventListener("input", refreshGate);
+  el.transcribe.addEventListener("change", refreshGate);
+  el.lyricsFile.addEventListener("change", function () {
+    if (!el.lyricsFile.files.length) { return; }
+    showPicked(el.lyricsName, el.lyricsFile, "拖进上面的框里也行");
+    loadLyricsFile(el.lyricsFile.files[0]);
+  });
+
+  // 文本框的占位符里写着「也可以把 lyrics.txt 拖进这里」。**那是一句承诺**：
+  // 不接这两个事件的话，浏览器的默认行为是拿那个文件把整个页面顶掉，用户看到的
+  // 是「拖进去，页面没了」。
+  el.lyrics.addEventListener("dragover", function (event) { event.preventDefault(); });
+  el.lyrics.addEventListener("drop", function (event) {
+    var files = event.dataTransfer ? event.dataTransfer.files : null;
+    if (!files || !files.length) { return; }
+    event.preventDefault();
+    loadLyricsFile(files[0]);
+  });
+
+  function fail(message) {
+    stopPolling();
+    el.failed.hidden = false;
+    el.errorText.textContent = message;
+  }
+
+  function stopPolling() {
+    if (timer !== null) { clearInterval(timer); timer = null; }
+  }
+
+  async function post(path, body, headers) {
+    var resp = await fetch(path, { method: "POST", body: body, headers: headers || {} });
+    var payload = await resp.json();
+    if (!resp.ok) { throw new Error(payload.error || ("请求失败：" + resp.status)); }
+    return payload;
+  }
+
+  async function sendLyrics(text) {
+    if (String(text || "").trim() === "") { return; }
+    await post("/api/job/" + job.id + "/lyrics", text,
+               { "Content-Type": "text/plain; charset=utf-8" });
+  }
+
+  el.start.addEventListener("click", async function () {
+    el.start.disabled = true;
+    el.failed.hidden = true;
+    try {
+      var link = el.url.value.trim();
+      var created;
+      if (link !== "") {
+        // 链接那条路：这一个请求**只建任务目录**，取回是下面 start 起的那个
+        // 子进程干的事。在这里同步取回的话，这个 POST 会挂住几分钟而页面上
+        // 一个字都没有——正是「不会以为它卡死了」要防的。
+        created = await post("/api/job-from-url", link,
+                             { "Content-Type": "text/plain; charset=utf-8" });
+      } else {
+        var file = el.media.files[0];
+        created = await post("/api/job", file,
+                             { "X-Filename": encodeURIComponent(file.name) });
+      }
+      job = { id: created.job_id, route: created.route };
+      await sendLyrics(el.lyrics.value);
+      el.progress.hidden = false;
+      // 勾了「先听一遍」就先走 `transcribe` 那一档；跑完停在校对框上，点
+      // 「改好了，继续」才回到 `run`（下面 `el.continue` 那个处理器）。
+      var stage = stageFor(job.route, el.transcribe.checked);
+      await post("/api/job/" + job.id + "/start?stage=" + stage, null);
+      poll();
+    } catch (err) {
+      el.start.disabled = false;
+      fail(String(err.message || err));
+    }
+  });
+
+  el.continue.addEventListener("click", async function () {
+    try {
+      await sendLyrics(el.ocrLyrics.value);
+      el.review.hidden = true;
+      el.failed.hidden = true;
+      await post("/api/job/" + job.id + "/start?stage=run", null);
+      job.route = "run";
+      poll();
+    } catch (err) {
+      fail(String(err.message || err));
+    }
+  });
+
+  // 「查看原因 ▾」：点哪一行都一样，展开的是同一个详细区。**不做一一关联**——
+  // 原因就在紧邻的位置，展开整块就够。
+  el.mainLog.addEventListener("click", function (event) {
+    var button = event.target.closest("[data-open-detail]");
+    if (!button) { return; }
+    el.detailBox.open = true;
+    el.detailBox.scrollIntoView({ block: "nearest" });
+  });
+
+  function render(state) {
+    el.outer.textContent = phaseTitle(state);
+    el.inner.textContent = stepText(state.inner);
+    el.bars.innerHTML = renderBars(state.outer, state.inner, state.status === "done");
+
+    // 听写那几分钟：说清它在干什么、为什么不动，再报一个**量出来的**已用时。
+    // 计时从页面第一次看见这一步开始（误差 ≤ 一个轮询间隔）；这一步一走完就
+    // 归零，下一次再进来重新计——留着上一次的数就是在报一个假的时间。
+    var waiting = transcribeWaiting(state);
+    el.waiting.hidden = !waiting;
+    if (waiting) {
+      if (waitingSince === null) { waitingSince = Date.now(); }
+      el.waitingWhy.textContent = waiting;
+      el.waitingElapsed.textContent =
+        "这一步已经跑了 " + elapsedText(Date.now() - waitingSince);
+    } else {
+      waitingSince = null;
+    }
+
+    var atBottom = el.mainLog.scrollTop + el.mainLog.clientHeight
+                   >= el.mainLog.scrollHeight - 4;
+    el.mainLog.innerHTML = renderMainLog(state.main || [], (state.detail || []).length);
+    if (atBottom) { el.mainLog.scrollTop = el.mainLog.scrollHeight; }
+
+    // 「前面那 n 行」得说得出它们在哪儿。原先这句写的是「前面还有 n 行」——而
+    // 那 n 行当时不在任何一个响应里，页面是在空口说话（收口评审 I1）。
+    el.omitted.hidden = !state.main_omitted;
+    el.omitted.textContent = state.main_omitted
+      ? "（上面只留了最近 " + (state.main || []).length + " 行，前面那 "
+        + state.main_omitted + " 行收在下面的「详细输出」里）" : "";
+    el.detailLog.textContent = (state.detail || []).join("\n");
+
+    if (state.status === "needs-lyrics") {
+      stopPolling();
+      el.blocked.textContent = state.error || "";
+      el.start.disabled = false;
+      return;
+    }
+    if (state.status === "error") {
+      fail(state.error || "子进程非零退出，但没留下任何输出。");
+      return;
+    }
+    if (state.status !== "done") { return; }
+
+    stopPolling();
+    // OCR 和听写走的是**同一个校对框**——两套并行的确认流程迟早会漂，而这一停
+    // 本来就是同一件事：机器认出来的字，人核行数与内容，核完才往下走。
+    if (state.stage === "ingest" || state.stage === "transcribe") {
+      el.reviewWhy.textContent = reviewNote(state.stage);
+      el.review.hidden = false;
+      if (el.ocrLyrics.value.trim() === "") { el.ocrLyrics.value = state.lyrics || ""; }
+      return;
+    }
+    var link = "/api/job/" + job.id + "/result";
+    el.resultLink.href = link;
+    el.finished.hidden = false;
+    if (!opened) { opened = true; window.open(link, "_blank"); }
+  }
+
+  async function tick() {
+    try {
+      var resp = await fetch("/api/job/" + job.id);
+      var state = await resp.json();
+      if (!resp.ok) { throw new Error(state.error || ("轮询失败：" + resp.status)); }
+      render(state);
+    } catch (err) {
+      fail(String(err.message || err));
+    }
+  }
+
+  function poll() {
+    stopPolling();
+    tick();
+    timer = setInterval(tick, 700);
+  }
+
+  refreshGate();
+}
+
+// 页面之外（比如 node 里的测试）不该碰 DOM——上面那些函数照样能调。
+if (typeof document !== "undefined") {
+  document.addEventListener("DOMContentLoaded", boot);
+}
+</script>
+</body>
+</html>

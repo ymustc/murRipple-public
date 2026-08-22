@@ -1,0 +1,12 @@
+[generic] Extracting URL: http://127.0.0.1:8931/%E7%9F%A5%E6%BC%AA%E6%B5%8B%E8%AF%95%E9%9F%B3.m4a
+[generic] 知漪测试音: Downloading webpage
+[info] 知漪测试音: Downloading 1 format(s): mp4a-latm
+[download] Destination: /private/tmp/claude-501/-Users-miaoyu-Documents-claudeProjects-murRipple--claude-worktrees-nostalgic-gould-ad0822/15312c2f-db01-4d4c-a0a8-522ac12e15b5/scratchpad/capture/outB/知漪测试音.m4a
+[download]   2.1% of   46.91KiB at  Unknown B/s ETA Unknown
+[download]   6.4% of   46.91KiB at  Unknown B/s ETA Unknown
+[download]  14.9% of   46.91KiB at  Unknown B/s ETA Unknown
+[download]  32.0% of   46.91KiB at  Unknown B/s ETA Unknown
+[download]  66.1% of   46.91KiB at  Unknown B/s ETA Unknown
+[download] 100.0% of   46.91KiB at  Unknown B/s ETA Unknown
+[download] 100% of   46.91KiB in 00:00:00 at 31.11MiB/s
+[info] Writing '%(filepath)s' to: /private/tmp/claude-501/-Users-miaoyu-Documents-claudeProjects-murRipple--claude-worktrees-nostalgic-gould-ad0822/15312c2f-db01-4d4c-a0a8-522ac12e15b5/scratchpad/capture/outB.path

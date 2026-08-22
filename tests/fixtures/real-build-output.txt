@@ -1,0 +1,18 @@
+[1/5] 分离音源：source.mp3
+[2/5] 读取分轨
+[3/5] 对齐歌词
+No language specified, language will be first be detected for each audio file (increases inference time).
+Lightning automatically upgraded your loaded checkpoint from v1.5.4 to v2.6.5. To apply the upgrade to your files permanently, run `python -m pytorch_lightning.utilities.upgrade_checkpoint .venv/lib/python3.11/site-packages/whisperx/assets/pytorch_model.bin`
+Model was trained with pyannote.audio 0.0.1, yours is 3.3.2. Bad things might happen unless you revert pyannote.audio to 0.x.
+Model was trained with torch 1.10.0+cu102, yours is 2.2.2. Bad things might happen unless you revert torch to 1.x.
+  语言：zh（--language 指定）
+No active speech found in audio
+/Users/miaoyu/Documents/claudeProjects/murRipple/.venv/lib/python3.11/site-packages/transformers/configuration_utils.py:312: UserWarning: Passing `gradient_checkpointing` to a config initialization is deprecated and will be removed in v5 Transformers. Using `model.gradient_checkpointing_enable()` instead, or if you are using the `Trainer` API, pass `gradient_checkpointing=True` in your `TrainingArguments`.
+  warnings.warn(
+  以下 1 行未对上，请在 overrides.json 中补时间：
+    - Le fer ne prie pas, il attend son heure,
+[4/5] 编码音频
+[5/5] 组装 timeline
+
+完成：/private/tmp/claude-501/-Users-miaoyu-Documents-claudeProjects-murRipple--claude-worktrees-stoic-bartik-915699/b2405aef-70a1-4773-98e4-fcb6c7e13d5f/scratchpad/recap2/songs/短片段/build/timeline.json
+  时长 12.0s · 136.0 BPM · 6 条轨道 · 0 句歌词

@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8"><title>murRipple boot harness</title>
+<style>
+  html,body{margin:0;height:100%;background:#06070d;overflow:hidden}
+  canvas{display:block;width:900px;height:520px}
+  #mr-ui{position:fixed;inset:0;pointer-events:none;font:12px monospace;color:#cfe;transition:none}
+  #mr-ui > *{pointer-events:auto}
+  #mr-ui.idle{opacity:0}
+  #mr-hud{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:12px;padding:14px 18px}
+  #mr-bar{position:relative;flex:1;height:20px;touch-action:none}
+  #mr-fill{position:absolute;left:0;top:9px;height:2px;width:0;background:#cfe}
+  #mr-knob{position:absolute;top:6px;left:0;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:#cfe}
+  #mr-vol{width:80px}
+  #mr-voices{position:absolute;right:16px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:10px}
+  .mr-voice{display:flex;align-items:flex-end;gap:6px;height:44px}
+  .mr-bars{display:flex;align-items:flex-end;gap:3px;height:100%}
+  .mr-bars i{width:4px;height:2%}
+  #mr-title{position:absolute;inset:0;display:grid;place-content:center;gap:10px;text-align:center;background:#06070d}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="mr-ui"></div>
+<script>
+/**
+ * 伪产物页：让 boot() 真的跑起来。
+ *
+ * boot() 只在打包产物里执行，ui-harness 装配的是各个 ui 模块而不走 boot。
+ * 结果是 boot 里的全部接线——空格键、拖拽三个回调、idle 的事件监听、
+ * 主循环调不调 hud.update——一条测试都没有。把 boot 整个改成抛异常，
+ * 136 条测试照样全绿。
+ *
+ * 关键是伪造 AudioContext 并把时钟交给测试推：真实 AudioContext 的
+ * currentTime 自己走，断言"暂停后时间不再前进"就只能靠 sleep，既慢又不稳。
+ */
+  const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
+  const ramp = (n) => b64(Array.from({length:n}, (_, i) => (i * 7) % 256));
+
+  window.__MR_TITLE__ = "boot harness";
+  window.__MR_TIMELINE__ = {
+    meta: { title:"boot", duration:270, bpm:120, codec:"aac-64k", schemaVersion:1 },
+    // 与下面 __MR_AUDIO__ 的四个 key 一致——main.js 的解码循环按这份列表
+    // 遍历，Task 5 之前这里没有 stems 字段是因为读的是写死的 STEMS 常量。
+    stems: ["vocals", "drums", "bass", "other"],
+    sections: [0, 9, 18, 115].map((t, i) => ({ t, name:"", energy:0.1 + i*0.08 })),
+    beats: [0,0.5,1,1.5,2], downbeats: [0,2,4],
+    ring: { envelope: ramp(600), presence: b64(Array.from({length:600},(_,i)=>i>200?255:0)) },
+    lanes: ["kick","snare","hat","bass","mid","air"].map((id,i)=>({
+      id, label:id, hue: i*57, stem: i<3?"drums":(i===3?"bass":"other"), gain: 1,
+      notes: Array.from({length: 15}, (_, k) => ({
+        t: 0.6 + k * 0.6 + i * 0.11,
+        v: 0.3 + ((k * 7 + i * 3) % 10) / 14,
+        pitch: id === "bass" ? 24 + ((k * 5) % 36) : null,
+      })),
+      envelope: ramp(600),
+    })),
+    lyrics: [{ t0: 1, t1: 4, text: "测试歌词", words: null }],
+  };
+  window.__MR_AUDIO__ = {
+    vocals: "data:audio/mp4;base64,AAAA",
+    drums:  "data:audio/mp4;base64,AAAA",
+    bass:   "data:audio/mp4;base64,AAAA",
+    other:  "data:audio/mp4;base64,AAAA",
+  };
+
+  // 测试自己推的假音频时钟
+  window.__AUDIO_CLOCK__ = 0;
+  window.__SRC_STARTS__ = [];       // 每次 start(when, at) 的 at
+  window.__MUTE_WRITES__ = [];      // applyMute 写了哪些增益
+
+  const SR = 8000, DUR = 12;
+  const fakeBuffer = {
+    sampleRate: SR, length: SR * DUR, duration: DUR, numberOfChannels: 1,
+    getChannelData: () => {
+      const ch = new Float32Array(SR * DUR);
+      for (let i = 0; i < ch.length; i++) {
+        ch[i] = 0.6*Math.sin(2*Math.PI*220*i/SR) + 0.3*Math.sin(2*Math.PI*55*i/SR);
+      }
+      return ch;
+    },
+  };
+
+  window.AudioContext = function () {
+    let n = 0;
+    return {
+      get currentTime() { return window.__AUDIO_CLOCK__; },
+      destination: { tag: "destination" },
+      decodeAudioData: () => Promise.resolve(fakeBuffer),
+      createGain: () => {
+        const tag = n++ === 0 ? "master" : `stem${n - 1}`;
+        return {
+          tag,
+          gain: { setTargetAtTime: (v) => window.__MUTE_WRITES__.push(`${tag}=${v}`) },
+          connect() {},
+        };
+      },
+      createBufferSource: () => ({
+        connect() {}, stop() {},
+        start: (when, at) => window.__SRC_STARTS__.push(at),
+      }),
+    };
+  };
+</script>
+<script src="../dist/bundle.js"></script>
+</body>
+</html>

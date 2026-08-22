@@ -1,0 +1,55 @@
+# Song working directories. Audio and build products stay out of git; the small
+# hand-authored files (lyrics.txt, overrides.json, lyrics.timing.json) are worth
+# keeping in version control — lyrics.timing.json in particular holds the sung
+# timings recovered from burned-in subtitles, and re-running the OCR is slow.
+songs/**/_in/
+songs/**/*.mp4
+songs/**/*.mov
+songs/**/*.mkv
+songs/**/*.mp3
+songs/**/*.wav
+songs/**/*.m4a
+songs/**/*.flac
+songs/**/stems/
+songs/**/build/
+songs/**/dist/
+songs/**/build
+songs/**/dist
+
+# ★ The one exception: the sample song's audio IS committed.
+#
+# Everything above is inherited from the private repo, where "no audio in git"
+# is absolute — that material belongs to other people. This repository ships
+# exactly one song, and it belongs to the author: *Trempe-moi*, music generated
+# with Suno, lyrics written by him.
+#
+# Without this line a fresh clone gets `lyrics.txt` and no audio, and the very
+# first command the README teaches fails. That is the whole reason the song is
+# here: so you can make something real before you go looking for your own
+# material. Caught 2026-08-16, before the first push — the end-to-end check had
+# been run against the *generated directory*, where the file is present on disk,
+# rather than against a fresh clone, where it was not.
+!songs/05-trempe-moi/source.mp3
+
+# Job directories created by the local web shell (`murripple serve`):
+# songs/web-<timestamp>-<original name>/. That is one person making one song on
+# their own machine, not a work belonging to the repository.
+songs/web-*/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.uv/
+*.egg-info/
+
+# Node
+node_modules/
+renderer/dist/
+
+# Video export intermediates
+video/frames/
+*.mp4
+
+# macOS
+.DS_Store

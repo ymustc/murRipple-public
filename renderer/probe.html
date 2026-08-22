@@ -1,0 +1,92 @@
+<!doctype html>
+<!--
+  murRipple probe —— M1 一次性验证探针，不是最终产物。
+
+  注意：下面用 requestAnimationFrame 直接驱动画面，是探针的权宜写法。
+  M2 的正式单文件渲染器必须遵守 spec 第 9 节的确定性约束（固定步长
+  模拟的确定性时钟），不可照抄这里的 rAF 驱动方式。
+-->
+<meta charset="utf-8">
+<title>murRipple probe</title>
+<style>
+  body { margin: 0; background: #06070d; color: #8ea; font: 13px ui-monospace, monospace; }
+  canvas { display: block; margin: 0 auto; }
+  #info { padding: 8px 12px; }
+  button { background: #1a2030; color: #8ea; border: 1px solid #345; padding: 6px 14px; cursor: pointer; }
+</style>
+<div id="info">载入中…</div>
+<button id="go">播放</button>
+<canvas id="cv" width="900" height="520"></canvas>
+<script type="module">
+import { decodeU8 } from './probe_decode.mjs';
+
+const RATE = 60;
+const info = document.getElementById('info');
+const g = document.getElementById('cv').getContext('2d');
+
+const tl = await (await fetch('timeline.json')).json();
+const lanes = tl.lanes.map(l => ({ ...l, env: decodeU8(l.envelope) }));
+const ring = decodeU8(tl.ring.envelope);
+
+info.textContent =
+  `${tl.meta.title} · ${tl.meta.duration.toFixed(1)}s · ` +
+  `${tl.meta.bpm.toFixed(1)} BPM · ${lanes.length} lanes · ` +
+  `${tl.lyrics.length} lines · env ${lanes[0].env.length} frames`;
+
+let ctx = null, t0 = 0, playing = false;
+
+document.getElementById('go').onclick = async () => {
+  if (playing) return;
+  ctx = new AudioContext();
+  const names = ['vocals', 'drums', 'bass', 'other'];
+  const buffers = await Promise.all(names.map(async n => {
+    const buf = await (await fetch(`audio/${n}.m4a`)).arrayBuffer();
+    return ctx.decodeAudioData(buf);
+  }));
+  for (const b of buffers) {
+    const src = ctx.createBufferSource();
+    src.buffer = b;
+    src.connect(ctx.destination);
+    src.start();
+  }
+  t0 = ctx.currentTime;
+  playing = true;
+};
+
+function sample(arr, t) {
+  const i = Math.min(arr.length - 1, Math.max(0, Math.round(t * RATE)));
+  return arr[i] / 255;
+}
+
+function draw() {
+  const t = playing ? ctx.currentTime - t0 : 0;
+  g.fillStyle = '#06070d';
+  g.fillRect(0, 0, 900, 520);
+
+  const cx = 450, cy = 280;
+  // 判定环 —— 人声驱动
+  const rv = sample(ring, t);
+  g.strokeStyle = `hsl(210 80% ${30 + rv * 55}%)`;
+  g.lineWidth = 2 + rv * 14;
+  g.beginPath();
+  g.arc(cx, cy, 120, 0, Math.PI * 2);
+  g.stroke();
+
+  // 六条弧形轨道
+  lanes.forEach((lane, i) => {
+    const v = sample(lane.env, t) * lane.gain;
+    const a0 = -Math.PI / 2 + i * (Math.PI * 2 / lanes.length) + 0.06;
+    const a1 = a0 + (Math.PI * 2 / lanes.length) - 0.12;
+    g.strokeStyle = `hsl(${lane.hue} 80% ${18 + v * 60}%)`;
+    g.lineWidth = 6 + v * 20;
+    g.beginPath();
+    g.arc(cx, cy, 200, a0, a1);
+    g.stroke();
+  });
+
+  g.fillStyle = '#8ea';
+  g.fillText(`t = ${t.toFixed(2)}s`, 12, 500);
+  requestAnimationFrame(draw);
+}
+draw();
+</script>

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8"><title>murRipple boot harness (nine stems)</title>
+<style>
+  html,body{margin:0;height:100%;background:#06070d;overflow:hidden}
+  canvas{display:block;width:900px;height:520px}
+  #mr-ui{position:fixed;inset:0;pointer-events:none;font:12px monospace;color:#cfe;transition:none}
+  #mr-ui > *{pointer-events:auto}
+  #mr-ui.idle{opacity:0}
+  #mr-hud{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:12px;padding:14px 18px}
+  #mr-bar{position:relative;flex:1;height:20px;touch-action:none}
+  #mr-fill{position:absolute;left:0;top:9px;height:2px;width:0;background:#cfe}
+  #mr-knob{position:absolute;top:6px;left:0;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:#cfe}
+  #mr-vol{width:80px}
+  #mr-voices{position:absolute;right:16px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:10px}
+  .mr-voice{display:flex;align-items:flex-end;gap:6px;height:44px}
+  .mr-bars{display:flex;align-items:flex-end;gap:3px;height:100%}
+  .mr-bars i{width:4px;height:2%}
+  #mr-title{position:absolute;inset:0;display:grid;place-content:center;gap:10px;text-align:center;background:#06070d}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="mr-ui"></div>
+<script>
+/**
+ * 伪产物页：与 boot-harness.html 同一套接线，唯一区别是 stems 从四条
+ * 换成九条（合成曲那种量级）。
+ *
+ * 为什么要单独一份而不是把 boot-harness.html 直接改成九条：boot-harness.html
+ * 守的是**四首真歌走的那一路**——四条分轨、点一行鼓联动三行视觉轨道。
+ * 把它改掉等于拆掉那一路唯一的守卫。这份文件守的是另一路：合成曲九条
+ * 分轨，解码循环、静音过滤要按 timeline.stems 处理全部九条，不能只处理
+ * 写死的前四条。两路行为不同，必须各自有测试盯着，见
+ * task-5-report.md「覆盖表」一节。
+ *
+ * `stems` 九条的第一条是 vocals，不占 lane；其余八条（drums/bass/other/
+ * pad/pluck/arp/bell/chime）与下面 `lanes` 的八条一一对应、逐条独立——
+ * 这是 Task 6 之后合成曲那一路的真实形状：面板 1+8=9 行，没有两行共用
+ * 同一个 stem（真歌才有"三行鼓共用 drums"那种分组）。
+ *
+ * 为什么要八条 lane 而不是沿用 Task 5 那份「6 lane / 9 stem」的旧写法：
+ * 旧写法里 lanes 仍是 6 条真歌形状，面板算出来也是 1+6=7 行，与
+ * boot-harness.html 那份四条夹具算出的行数完全相同——`buildVoiceRows`
+ * 被改成永远返回写死的七行时，两份夹具的 DOM 断言会一起绿，测不出这份
+ * 九条夹具在守什么。lane 数改成 8 之后，「写死七行」这个变异体会让这
+ * 份夹具的行数断言从 9 变成 7，而 boot-harness.html 那份仍然是对的 7，
+ * 两份断言才终于会给出不同的信号。
+ */
+  const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
+  const ramp = (n) => b64(Array.from({length:n}, (_, i) => (i * 7) % 256));
+
+  window.__MR_TITLE__ = "boot harness (nine)";
+  window.__MR_TIMELINE__ = {
+    meta: { title:"boot-nine", duration:270, bpm:120, codec:"aac-64k", schemaVersion:1 },
+    // 九条，与下面 __MR_AUDIO__ 的九个 key 一致。刻意不是四条：四条时
+    // "按 timeline.stems 遍历"与"写死四条遍历"行为完全相同，测不出区别。
+    stems: ["vocals", "drums", "bass", "other", "pad", "pluck", "arp", "bell", "chime"],
+    sections: [0, 9, 18, 115].map((t, i) => ({ t, name:"", energy:0.1 + i*0.08 })),
+    beats: [0,0.5,1,1.5,2], downbeats: [0,2,4],
+    ring: { envelope: ramp(600), presence: b64(Array.from({length:600},(_,i)=>i>200?255:0)) },
+    // 八条，逐条对应 stems 里除 vocals 外的八个名字——合成曲那种"每行独立"
+    // 的形状，不是真歌那种"三行共用 drums"的分组。
+    lanes: ["drums","bass","other","pad","pluck","arp","bell","chime"].map((id,i)=>({
+      id, label:id, hue: i*41, stem: id, gain: 1,
+      notes: Array.from({length: 15}, (_, k) => ({
+        t: 0.6 + k * 0.6 + i * 0.11,
+        v: 0.3 + ((k * 7 + i * 3) % 10) / 14,
+        pitch: id === "bass" ? 24 + ((k * 5) % 36) : null,
+      })),
+      envelope: ramp(600),
+    })),
+    lyrics: [{ t0: 1, t1: 4, text: "测试歌词", words: null }],
+  };
+  window.__MR_AUDIO__ = {
+    vocals: "data:audio/mp4;base64,AAAA",
+    drums:  "data:audio/mp4;base64,AAAA",
+    bass:   "data:audio/mp4;base64,AAAA",
+    other:  "data:audio/mp4;base64,AAAA",
+    pad:    "data:audio/mp4;base64,AAAA",
+    pluck:  "data:audio/mp4;base64,AAAA",
+    arp:    "data:audio/mp4;base64,AAAA",
+    bell:   "data:audio/mp4;base64,AAAA",
+    chime:  "data:audio/mp4;base64,AAAA",
+  };
+
+  // 测试自己推的假音频时钟
+  window.__AUDIO_CLOCK__ = 0;
+  window.__SRC_STARTS__ = [];       // 每次 start(when, at) 的 at
+  window.__MUTE_WRITES__ = [];      // applyMute 写了哪些增益
+
+  const SR = 8000, DUR = 12;
+  const fakeBuffer = {
+    sampleRate: SR, length: SR * DUR, duration: DUR, numberOfChannels: 1,
+    getChannelData: () => {
+      const ch = new Float32Array(SR * DUR);
+      for (let i = 0; i < ch.length; i++) {
+        ch[i] = 0.6*Math.sin(2*Math.PI*220*i/SR) + 0.3*Math.sin(2*Math.PI*55*i/SR);
+      }
+      return ch;
+    },
+  };
+
+  window.AudioContext = function () {
+    let n = 0;
+    return {
+      get currentTime() { return window.__AUDIO_CLOCK__; },
+      destination: { tag: "destination" },
+      decodeAudioData: () => Promise.resolve(fakeBuffer),
+      createGain: () => {
+        const tag = n++ === 0 ? "master" : `stem${n - 1}`;
+        return {
+          tag,
+          gain: { setTargetAtTime: (v) => window.__MUTE_WRITES__.push(`${tag}=${v}`) },
+          connect() {},
+        };
+      },
+      createBufferSource: () => ({
+        connect() {}, stop() {},
+        start: (when, at) => window.__SRC_STARTS__.push(at),
+      }),
+    };
+  };
+</script>
+<script src="../dist/bundle.js"></script>
+</body>
+</html>

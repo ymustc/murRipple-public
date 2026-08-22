@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="zh">
+<head><meta charset="utf-8"><title>murRipple ui harness</title>
+<style>
+  html,body{margin:0;height:100%;background:#06070d;overflow:hidden}
+  canvas{display:block;width:900px;height:520px}
+  /* 与 template.html 保持一致的最小子集——测的是行为不是外观 */
+  #mr-ui{position:fixed;inset:0;pointer-events:none;font:12px monospace;color:#cfe}
+  #mr-ui > *{pointer-events:auto}
+  #mr-hud{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;gap:12px;padding:14px 18px}
+  #mr-bar{position:relative;flex:1;height:20px;touch-action:none}
+  #mr-ticks i{position:absolute;top:5px;width:1px;height:10px;background:#fff6}
+  #mr-fill{position:absolute;left:0;top:9px;height:2px;width:0;background:#cfe}
+  #mr-knob{position:absolute;top:6px;left:0;width:8px;height:8px;margin-left:-4px;border-radius:50%;background:#cfe}
+  #mr-vol{width:80px}
+  #mr-voices{position:absolute;right:16px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:10px}
+  .mr-voice{display:flex;align-items:center;gap:9px;width:190px;padding:5px 4px;background:none;border:0;color:inherit;font:inherit}
+  .mr-dot{width:7px;height:7px;border-radius:50%}
+  .mr-name{flex:1}
+  .mr-meter{position:relative;width:56px;height:2px;background:#fff3}
+  .mr-meter > i{position:absolute;left:0;top:0;height:100%;width:2%;background:#aebbd0}
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+<div id="mr-ui"></div>
+<script src="../dist/bundle.js"></script>
+<script>
+  const b64 = (bytes) => btoa(String.fromCharCode(...bytes));
+  const ramp = (n) => b64(Array.from({length:n}, (_, i) => (i * 7) % 256));
+
+  // 时长 270 秒，与真实曲目同量级——走带条的刻度与钳位要按真实比例测
+  const doc = {
+    meta: { title:"ui", duration:270, bpm:120, codec:"aac-64k", schemaVersion:1 },
+    stems: ["vocals", "drums", "bass", "other"],
+    sections: [0, 9, 18, 115, 152, 242].map((t, i) => ({ t, name:"", energy:0.1 + i*0.06 })),
+    beats: [0,0.5,1,1.5,2], downbeats: [0,2,4],
+    ring: { envelope: ramp(600), presence: b64(Array.from({length:600},(_,i)=>i>200?255:0)) },
+    lanes: ["kick","snare","hat","bass","mid","air"].map((id,i)=>({
+      id, label:id, hue: i*57, stem: i<3?"drums":(i===3?"bass":"other"), gain: 1,
+      notes: Array.from({length: 15}, (_, k) => ({
+        t: 0.6 + k * 0.6 + i * 0.11,
+        v: 0.3 + ((k * 7 + i * 3) % 10) / 14,
+        pitch: id === "bass" ? 24 + ((k * 5) % 36) : null,
+      })),
+      envelope: ramp(600),
+    })),
+    lyrics: [{ t0: 1, t1: 4, text: "测试歌词", words: null }],
+  };
+
+  window.__HARNESS_DOC__ = doc;
+
+  const app = murRippleApp.createApp({
+    doc: document, canvas: document.getElementById("cv"),
+    timelineDoc: doc, mode: "offline",
+  });
+  app.resize();
+
+  const SR = 8000, DUR = 10;
+  const ch = new Float32Array(SR * DUR);
+  for (let i = 0; i < ch.length; i++) {
+    ch[i] = 0.6*Math.sin(2*Math.PI*220*i/SR) + 0.3*Math.sin(2*Math.PI*55*i/SR);
+  }
+  window.__HARNESS_AUDIO__ = { channel: ch, sr: SR };
+  app.setAudio(window.__HARNESS_AUDIO__);
+
+  // 记录回调收到的值，测试据此断言，不必真的接一个 AudioContext
+  window.__UI__ = {
+    app, lastSeek: null, lastScrub: null, lastScrubEnd: null,
+    lastVolume: null, toggles: 0, toggledStems: [], endCount: 0, hides: 0, hoverLane: null,
+  };
+  const root = document.getElementById("mr-ui");
+
+  window.__UI__.hud = murRippleApp.createHud(document, root, {
+    duration: doc.meta.duration,
+    sections: doc.sections,
+    onTogglePlay: () => { window.__UI__.toggles++; },
+    onScrub: (t) => { window.__UI__.lastScrub = t; window.__UI__.lastSeek = t; },
+    onScrubEnd: (t) => {
+      window.__UI__.lastScrubEnd = t; window.__UI__.lastSeek = t;
+      window.__UI__.endCount++;
+    },
+    onVolume: (v) => { window.__UI__.lastVolume = v; },
+    onHide: () => { window.__UI__.hides++; },
+  });
+
+  // 这份夹具是四首真歌走的那一路：四个可静音 stem，与 doc.stems 一致。
+  window.__UI__.mute = murRippleApp.createMuteState(["vocals", "drums", "bass", "other"]);
+  window.__UI__.voices = murRippleApp.createVoices(document, root, {
+    lanes: app.timeline.lanes,
+    ring: app.timeline.ring,
+    mute: window.__UI__.mute,
+    onToggle: (stem) => {
+      window.__UI__.toggledStems.push(stem);
+      window.__UI__.mute.toggle(stem);
+      window.__UI__.voices.syncMute();
+    },
+    onHover: (id) => { window.__UI__.hoverLane = id; },
+  });
+
+  app.renderFrame(0);
+</script>
+</body>
+</html>
